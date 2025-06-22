@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<movie id="mov001" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:noNamespaceSchemaLocation="../../schemas/movie_schema.xsd">
+    <title>Inception</title>
+    <year>2010</year>
+    <director>Christopher Nolan</director>
+    <genres>
+        <genre>Sci-Fi</genre>
+        <genre>Action</genre>
+        <genre>Thriller</genre>
+    </genres>
+    <actors>
+        <actor>Leonardo DiCaprio</actor>
+        <actor>Joseph Gordon-Levitt</actor>
+        <actor>Elliot Page</actor>
+    </actors>
+    <plot><![CDATA[A thief who steals information by entering people's dreams is offered a chance to have his criminal history erased as payment for a task considered to be impossible: "inception", the implantation of another person's idea into a target's subconscious.]]></plot>
+    <posterUrl>https://m.media-amazon.com/images/M/MV5BMjAxMzY3NjcxNF5BMl5BanBnXkFtZTcwNTI5OTM0Mw@@._V1_SX300.jpg</posterUrl>
+    <rating>8.8</rating>
+</movie>
