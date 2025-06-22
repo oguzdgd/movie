@@ -1,0 +1,41 @@
+<!-- schemas/movie_schema.xsd -->
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+
+    <xs:element name="movie">
+        <xs:complexType>
+            <xs:sequence>
+                <xs:element name="title" type="xs:string"/>
+                <xs:element name="year" type="xs:gYear" minOccurs="0"/>
+                <xs:element name="director" type="xs:string" minOccurs="0"/>
+                <xs:element name="genres" minOccurs="0">
+                    <xs:complexType>
+                        <xs:sequence>
+                            <xs:element name="genre" type="xs:string" maxOccurs="unbounded"/>
+                        </xs:sequence>
+                    </xs:complexType>
+                </xs:element>
+                <xs:element name="actors" minOccurs="0">
+                    <xs:complexType>
+                        <xs:sequence>
+                            <xs:element name="actor" type="xs:string" maxOccurs="unbounded"/>
+                        </xs:sequence>
+                    </xs:complexType>
+                </xs:element>
+                <xs:element name="plot" type="xs:string" minOccurs="0"/>
+                <xs:element name="posterUrl" type="xs:anyURI" minOccurs="0"/>
+                <xs:element name="rating" minOccurs="0">
+                    <xs:simpleType>
+                        <xs:restriction base="xs:decimal">
+                            <xs:minInclusive value="0"/>
+                            <xs:maxInclusive value="10"/>
+                            <xs:fractionDigits value="1"/>
+                        </xs:restriction>
+                    </xs:simpleType>
+                </xs:element>
+            </xs:sequence>
+            <xs:attribute name="id" type="xs:string" use="required"/>
+        </xs:complexType>
+    </xs:element>
+
+</xs:schema>
