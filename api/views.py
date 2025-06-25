@@ -11,7 +11,9 @@ from rest_framework.authtoken.models import Token
 
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.authentication import TokenAuthentication
-from rest_framework.permissions import IsAuthenticated, IsAdminUser
+from rest_framework.permissions import IsAuthenticated, IsAdminUser, AllowAny
+
+from .models import WatchedMovie
 
 MOVIE_SCHEMA_PATH = os.path.join(settings.BASE_DIR, 'schemas', 'movie_schema.xsd')
 
@@ -236,3 +238,103 @@ def register_user_view(request):
             return error_xml_response(f"An unexpected error occurred: {str(e)}", status_code=500)
     
     return error_xml_response("Method Not Allowed", status_code=405)
+
+
+# WATCHED MOVİE
+
+def watched_movie_to_xml_etree(watched_movie_obj):
+    """WatchedMovie nesnesini XML'e dönüştürür."""
+    root = etree.Element("watchedMovie", movieId=str(watched_movie_obj.movie.movie_id))
+    etree.SubElement(root, "title").text = watched_movie_obj.movie.title
+    etree.SubElement(root, "watchedDate").text = str(watched_movie_obj.watched_date)
+    if watched_movie_obj.user_rating:
+        etree.SubElement(root, "userRating").text = str(watched_movie_obj.user_rating)
+    return root
+
+@api_view(['GET', 'POST'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated]) # Bu endpoint'e sadece giriş yapmış kullanıcılar erişebilir
+def watched_list_view(request):
+    """
+    GET: Giriş yapmış kullanıcının izlenenler listesini döner.
+    POST: Giriş yapmış kullanıcının izlenenler listesine yeni bir film ekler.
+    """
+    user = request.user 
+
+    if request.method == 'GET':
+        watched_movies = WatchedMovie.objects.filter(user=user).select_related('movie')
+        root = etree.Element("watchedList", user=user.username)
+        for item in watched_movies:
+            root.append(watched_movie_to_xml_etree(item))
+        return xml_response(root)
+
+    elif request.method == 'POST':
+        if request.content_type != 'application/xml':
+            return error_xml_response("Content-Type must be application/xml", status_code=415)
+        
+        try:
+            xml_doc = etree.fromstring(request.body)
+            movie_id = xml_doc.findtext('movieId')
+            user_rating_str = xml_doc.findtext('userRating')
+
+            if not movie_id:
+                return error_xml_response("movieId is required in the XML body.", status_code=400)
+            
+            # İlgili filmi veritabanından bul
+            movie_to_add = get_object_or_404(Movie, pk=movie_id)
+            
+            # Zaten listede var mı kontrolü (modeldeki unique_together bunu zaten yapar ama ön kontrol iyi)
+            if WatchedMovie.objects.filter(user=user, movie=movie_to_add).exists():
+                return error_xml_response("This movie is already in your watched list.", status_code=409)
+
+            # Yeni WatchedMovie nesnesi oluştur
+            new_watched_item = WatchedMovie.objects.create(
+                user=user,
+                movie=movie_to_add,
+                user_rating=float(user_rating_str) if user_rating_str else None
+            )
+            
+            return xml_response(watched_movie_to_xml_etree(new_watched_item), status_code=201)
+
+        except etree.XMLSyntaxError:
+            return error_xml_response("Invalid XML syntax.", status_code=400)
+        except Movie.DoesNotExist:
+            return error_xml_response(f"Movie with id '{movie_id}' not found.", status_code=404)
+        except Exception as e:
+            # Veritabanı unique constraint hatasını yakalamak için
+            if 'UNIQUE constraint' in str(e):
+                 return error_xml_response("This movie is already in your watched list.", status_code=409)
+            return error_xml_response(f"An error occurred: {str(e)}", status_code=500)
+        
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny]) # Herkesin HTML sayfasını görmesine izin ver
+def movie_detail_html_view(request, movie_id):
+    """
+    Bir filmin XML verisini XSLT ile HTML'e dönüştürür ve tarayıcıda gösterir.
+    """
+    # 1. Veritabanından ilgili filmi al
+    movie_obj = get_object_or_404(Movie, pk=movie_id)
+    
+    # 2. Film nesnesini XML etree'ye dönüştür
+    xml_tree = movie_to_xml_etree(movie_obj)
+
+    try:
+        # 3. XSLT dosyasını yükle
+        xslt_path = os.path.join(settings.BASE_DIR, 'xslt', 'movie_to_html.xsl')
+        xslt_tree = etree.parse(xslt_path)
+        transform = etree.XSLT(xslt_tree)
+        
+        # 4. XML verisine XSLT dönüşümünü uygula
+        html_tree = transform(xml_tree)
+        
+        # 5. Sonucu HTML string'ine dönüştür
+        html_result = etree.tostring(html_tree, pretty_print=True).decode('utf-8')
+        
+        # 6. HTML yanıtı olarak döndür
+        return HttpResponse(html_result, content_type='text/html')
+
+    except Exception as e:
+        # Hata durumunda basit bir metin hatası döndür
+        return HttpResponse(f"<h1>An error occurred during XSLT transformation.</h1><p>{e}</p>", status=500, content_type='text/html')

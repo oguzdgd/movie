@@ -17,7 +17,15 @@ urlpatterns = [
 
     # kullanıcı giriş endpointi
     path('auth/login/', obtain_auth_token, name='api-token-auth'),
+
+    # Bir kullanıcının izlenenler listesini yönetmek için
+    path('watchedlist/', views.watched_list_view, name='watched-list'),
+    #  URL'yi /users/{user_id}/watchedlist/ gibi yapmak yerine /watchedlist/ yapıyoruz çünkü kimin istek attığını zaten request.user'dan (token sayesinde) bileceğiz. Bu daha güvenli ve RESTful bir yaklaşımdır.
+
+    # XSLT dönüşümü için HTML sayfası sunan URL
+    path('movies/<str:movie_id>/html/', views.movie_detail_html_view, name='movie-detail-html'),
 ]
+
     
 
 
