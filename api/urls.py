@@ -27,6 +27,10 @@ urlpatterns = [
 
     # Bir filme ait yorumları listelemek ve yeni yorum eklemek için
     path('movies/<str:movie_id>/comments/', views.comment_list_create_view, name='comment-list-create'),
+
+
+    # TMDB'den film içe aktarmak için
+    path('import/movie/', views.import_movie_from_tmdb_view, name='import-movie'),
 ]
 
     

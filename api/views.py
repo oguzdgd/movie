@@ -15,6 +15,10 @@ from rest_framework.permissions import IsAuthenticated, IsAdminUser, AllowAny
 
 from .models import WatchedMovie , Comment
 
+import requests
+from django.conf import settings 
+
+
 MOVIE_SCHEMA_PATH = os.path.join(settings.BASE_DIR, 'schemas', 'movie_schema.xsd')
 
 # --- XML Yardımcı Fonksiyonları ---
@@ -415,3 +419,73 @@ def comment_list_create_view(request, movie_id):
         except Exception as e:
             return error_xml_response(f"An error occurred: {str(e)}", status_code=500)
     
+
+#TMDB FİLM İÇERİ AKTARMA 
+
+@api_view(['POST'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAdminUser]) # Sadece adminler film içe aktarabilsin
+def import_movie_from_tmdb_view(request):
+    """
+    TMDB'den bir film arar ve veritabanına aktarır.
+    İstek XML'i: <importRequest><title>Inception</title></importRequest>
+    """
+    if request.content_type != 'application/xml':
+        return error_xml_response("Content-Type must be application/xml", status_code=415)
+    
+    try:
+        xml_doc = etree.fromstring(request.body)
+        movie_title_to_search = xml_doc.findtext('title')
+        if not movie_title_to_search:
+            return error_xml_response("A 'title' element is required in the request body.", status_code=400)
+        
+        # 1. TMDB API'ye istek atma (Client Implementation)
+        tmdb_api_key = settings.TMDB_API_KEY
+        if not tmdb_api_key:
+            return error_xml_response("TMDB API key is not configured on the server.", status_code=500)
+
+        search_url = f"https://api.themoviedb.org/3/search/movie?api_key={tmdb_api_key}&query={movie_title_to_search}"
+        
+        response = requests.get(search_url)
+        
+        # 2. Hata Yönetimi (Error Handling)
+        response.raise_for_status() # 4xx veya 5xx HTTP hataları için exception fırlatır
+        
+        search_results = response.json()
+        
+        if not search_results.get('results'):
+            return error_xml_response(f"No movie found on TMDB with the title '{movie_title_to_search}'.", status_code=404)
+        
+        # En iyi sonucu (ilk sonucu) alalım
+        tmdb_movie = search_results['results'][0]
+        tmdb_id = tmdb_movie.get('id')
+
+        # Veritabanında bu film zaten var mı diye kontrol edelim (TMDB ID'si ile)
+        # Movie modeline tmdb_id alanı eklemek en iyisidir. Şimdilik başlıkla kontrol edelim.
+        if Movie.objects.filter(title__iexact=tmdb_movie.get('title')).exists():
+             return error_xml_response(f"Movie '{tmdb_movie.get('title')}' already exists in the database.", status_code=409)
+
+        # 3. JSON'dan Kendi Modelimize Veri Aktarma
+        # Benzersiz bir movie_id oluşturalım
+        new_movie_id = f"tmdb_{tmdb_id}"
+
+        new_movie = Movie.objects.create(
+            movie_id=new_movie_id,
+            title=tmdb_movie.get('title'),
+            year=int(tmdb_movie.get('release_date', '0-0-0').split('-')[0]) if tmdb_movie.get('release_date') else None,
+            plot=tmdb_movie.get('overview'),
+            poster_url=f"https://image.tmdb.org/t/p/w500{tmdb_movie.get('poster_path')}" if tmdb_movie.get('poster_path') else None,
+            rating=tmdb_movie.get('vote_average')
+        )
+
+        # 4. Oluşturulan nesneyi kendi XML formatımızda döndürme
+        return xml_response(movie_to_xml_etree(new_movie), status_code=201)
+
+    except requests.exceptions.HTTPError as e:
+        # Harici API'den gelen HTTP hatalarını yakala
+        return error_xml_response(f"Error communicating with TMDB API: {e}", status_code=502) # Bad Gateway
+    except requests.exceptions.RequestException as e:
+        # Genel ağ hatalarını yakala
+        return error_xml_response(f"A network error occurred: {e}", status_code=503) # Service Unavailable
+    except Exception as e:
+        return error_xml_response(f"An unexpected error occurred: {str(e)}", status_code=500)
