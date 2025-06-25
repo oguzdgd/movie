@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*build/
+*dist/
+
+# Sanal Ortam
+venv/
+env/
+.venv/
+.env/
+
+# Django
+*.log
+db.sqlite3
+db.sqlite3-journal
+
+# Ortam Değişkenleri
+.env
+
+# IDE ve Editör Dosyaları
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# İşletim Sistemi Dosyaları
+.DS_Store
+Thumbs.db
