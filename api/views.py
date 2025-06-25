@@ -4,7 +4,14 @@ from django.shortcuts import get_object_or_404
 from .models import Movie
 from lxml import etree
 import os
+
 from django.conf import settings
+from django.contrib.auth.models import User
+from rest_framework.authtoken.models import Token
+
+from rest_framework.decorators import api_view, authentication_classes, permission_classes
+from rest_framework.authentication import TokenAuthentication
+from rest_framework.permissions import IsAuthenticated, IsAdminUser
 
 MOVIE_SCHEMA_PATH = os.path.join(settings.BASE_DIR, 'schemas', 'movie_schema.xsd')
 
@@ -57,7 +64,8 @@ def error_xml_response(message, status_code=400):
     return xml_response(root, status_code=status_code)
 
 
-@csrf_exempt
+@api_view(['GET', 'POST'])
+@authentication_classes([TokenAuthentication]) 
 def movie_list_create_view(request):
     """
     GET: Tüm filmlerin listesini XML olarak döner.
@@ -73,19 +81,15 @@ def movie_list_create_view(request):
         return xml_response(root)
 
     elif request.method == 'POST':
-        if request.content_type != 'application/xml':
-            return error_xml_response("Content-Type must be application/xml", status_code=415)
+        if not request.user.is_staff: # is_staff veya is_superuser kontrolü
+            return error_xml_response("You do not have permission to perform this action.", status_code=403)
         
         is_valid_xml, error_msg, xml_doc = validate_xml_with_xsd(request.body, MOVIE_SCHEMA_PATH)
         if not is_valid_xml:
             return error_xml_response(error_msg, status_code=400)
 
         try:
-            # DOĞRU YOL: xml_doc zaten kök elemanıdır.
-            # YANLIŞ: movie_id = xml_doc.getroot().get('id') 
-            movie_id = xml_doc.get('id') # .getroot() kaldırıldı.
-
-            # Diğer alanlar için de aynı şekilde .getroot() olmadan devam edin.
+            movie_id = xml_doc.get('id') 
             title = xml_doc.findtext('title')
             year_str = xml_doc.findtext('year')
             year = int(year_str) if year_str and year_str.isdigit() else None
@@ -116,19 +120,37 @@ def movie_list_create_view(request):
     
     return error_xml_response("Method Not Allowed", status_code=405)
 
-@csrf_exempt
+
+@api_view(['GET', 'PUT', 'DELETE']) # 1. Hangi HTTP metodlarına izin verileceğini belirt
+# 2. Kimlik doğrulama ve yetkilendirme sınıflarını tanımla
+@authentication_classes([TokenAuthentication]) 
+# @permission_classes([IsAuthenticated]) # Şimdilik bunu daha esnek yapalım
 def movie_detail_view(request, movie_id):
     """
-    GET: Belirli bir filmin detaylarını XML olarak döner.
-    PUT: Belirli bir filmi günceller (gelen XML verisi ile).
-    DELETE: Belirli bir filmi siler.
+    GET: Herkes erişebilir.
+    PUT/DELETE: Sadece admin yetkisine sahip (is_staff=True) kullanıcılar erişebilir.
     """
-    movie_obj = get_object_or_404(Movie, pk=movie_id) # pk=movie_id doğru olmalı (modeldeki primary key)
+    # get_object_or_404 Django'nun standart bir aracıdır, DRF ile de uyumlu çalışır
+    movie_obj = get_object_or_404(Movie, pk=movie_id)
 
+    # --- GET İsteği ---
+    # Herkesin film detayını görmesine izin verelim.
     if request.method == 'GET':
         return xml_response(movie_to_xml_etree(movie_obj))
 
-    elif request.method == 'PUT':
+    # --- PUT veya DELETE İstekleri (Kimlik Doğrulama ve Yetkilendirme Gerekli) ---
+    
+    # 3. İsteği yapan kullanıcının kimliğini kontrol et
+    if not request.user.is_authenticated:
+        return error_xml_response("Authentication credentials were not provided.", status_code=401) # Unauthorized
+
+    # 4. İsteği yapan kullanıcının yetkisini (rolünü) kontrol et
+    if not request.user.is_staff: # Django'da admin kullanıcıları 'staff' olarak işaretlenir
+        return error_xml_response("You do not have permission to perform this action.", status_code=403) # Forbidden
+    
+
+    # Eğer kullanıcı kimliğini ve yetkisini geçtiyse, işlemlere devam et:
+    if request.method == 'PUT':
         if request.content_type != 'application/xml':
             return error_xml_response("Content-Type must be application/xml", status_code=415)
 
@@ -138,8 +160,6 @@ def movie_detail_view(request, movie_id):
         
         try:
             # XML'den güncellenecek verileri al
-            # Sadece gönderilen alanları güncellemek daha iyi olabilir (PATCH mantığı)
-            # ama PUT genellikle tüm kaynağı değiştirmeyi hedefler.
             movie_obj.title = xml_doc.findtext('title', default=movie_obj.title)
             year_str = xml_doc.findtext('year')
             movie_obj.year = int(year_str) if year_str and year_str.isdigit() else movie_obj.year
@@ -154,8 +174,65 @@ def movie_detail_view(request, movie_id):
             movie_obj.delete()
             success_xml = etree.Element("success")
             etree.SubElement(success_xml, "message").text = f"Movie with id {movie_id} deleted successfully."
-            return xml_response(success_xml, status_code=204) # No Content
+            # DELETE başarılı olduğunda genellikle boş bir yanıt (204) döndürülür.
+            # İstemcinin bir mesaja ihtiyacı varsa 200 OK ile de döndürülebilir.
+            return xml_response(success_xml, status_code=200) 
         except Exception as e:
             return error_xml_response(f"Error deleting movie: {str(e)}", status_code=500)
 
+
+# Helper fonksiyonu: Kullanıcı nesnesini XML'e dönüştür
+def user_to_xml_etree(user_obj):
+    root = etree.Element("user", id=str(user_obj.id))
+    etree.SubElement(root, "username").text = user_obj.username
+    etree.SubElement(root, "email").text = user_obj.email
+    etree.SubElement(root, "first_name").text = user_obj.first_name
+    etree.SubElement(root, "last_name").text = user_obj.last_name
+    return root
+
+@csrf_exempt
+def register_user_view(request):
+    """
+    POST: Yeni bir kullanıcı oluşturur (XML ile).
+    """
+    if request.method == 'POST':
+        if request.content_type != 'application/xml':
+            return error_xml_response("Content-Type must be application/xml", status_code=415)
+        
+        try:
+            # Gelen XML'i ayrıştır
+            xml_doc = etree.fromstring(request.body)
+            
+            # Gerekli alanları al (basit XSD veya manuel kontrol yapılabilir)
+            username = xml_doc.findtext('username')
+            email = xml_doc.findtext('email')
+            password = xml_doc.findtext('password')
+
+            if not username or not password or not email:
+                return error_xml_response("Username, email, and password are required.", status_code=400)
+
+            # Kullanıcı adının veya e-postanın zaten var olup olmadığını kontrol et
+            if User.objects.filter(username=username).exists():
+                return error_xml_response(f"Username '{username}' already exists.", status_code=409)
+            if User.objects.filter(email=email).exists():
+                return error_xml_response(f"Email '{email}' already exists.", status_code=409)
+
+            # Yeni kullanıcıyı oluştur
+            new_user = User.objects.create_user(username=username, email=email, password=password)
+            
+            # Kullanıcı için bir token oluştur
+            token, created = Token.objects.get_or_create(user=new_user)
+            
+            # Başarılı yanıtı oluştur
+            response_root = user_to_xml_etree(new_user)
+            etree.SubElement(response_root, "message").text = "User created successfully."
+            etree.SubElement(response_root, "token").text = token.key
+
+            return xml_response(response_root, status_code=201)
+        
+        except etree.XMLSyntaxError:
+            return error_xml_response("Invalid XML syntax.", status_code=400)
+        except Exception as e:
+            return error_xml_response(f"An unexpected error occurred: {str(e)}", status_code=500)
+    
     return error_xml_response("Method Not Allowed", status_code=405)

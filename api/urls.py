@@ -1,5 +1,6 @@
 from django.urls import path
 from . import views
+from rest_framework.authtoken.views import obtain_auth_token
 
 
 app_name = 'api' 
@@ -8,8 +9,15 @@ urlpatterns = [
     # Filmleri listelemek ve yeni film eklemek için (POST)
     path('movies/', views.movie_list_create_view, name='movie-list-create'),
     
-    # Belirli bir filmi getirmek, güncellemek (PUT), silmek (DELETE) için
+    # Belirli bir filmi getirmek( GET), güncellemek (PUT), silmek (DELETE) için
     path('movies/<str:movie_id>/', views.movie_detail_view, name='movie-detail'),
-    
+
+    # kullanıcı kayıt endpointi
+    path('auth/register/', views.register_user_view, name='register-user'),
+
+    # kullanıcı giriş endpointi
+    path('auth/login/', obtain_auth_token, name='api-token-auth'),
 ]
+    
+
 
