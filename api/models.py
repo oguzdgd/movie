@@ -27,3 +27,19 @@ class WatchedMovie(models.Model):
 
     def __str__(self):
         return f"{self.user.username} watched {self.movie.title}"
+    
+
+class Comment(models.Model):
+    
+    movie = models.ForeignKey(Movie, on_delete=models.CASCADE, related_name='comments')
+    author = models.ForeignKey(User, on_delete=models.CASCADE, related_name='comments')
+    body = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        # Yorumları en yeniden en eskiye doğru sırala
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'Comment by {self.author.username} on {self.movie.title}'

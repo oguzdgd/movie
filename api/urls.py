@@ -24,6 +24,9 @@ urlpatterns = [
 
     # XSLT dönüşümü için HTML sayfası sunan URL
     path('movies/<str:movie_id>/html/', views.movie_detail_html_view, name='movie-detail-html'),
+
+    # Bir filme ait yorumları listelemek ve yeni yorum eklemek için
+    path('movies/<str:movie_id>/comments/', views.comment_list_create_view, name='comment-list-create'),
 ]
 
     

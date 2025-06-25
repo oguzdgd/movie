@@ -13,7 +13,7 @@ from rest_framework.decorators import api_view, authentication_classes, permissi
 from rest_framework.authentication import TokenAuthentication
 from rest_framework.permissions import IsAuthenticated, IsAdminUser, AllowAny
 
-from .models import WatchedMovie
+from .models import WatchedMovie , Comment
 
 MOVIE_SCHEMA_PATH = os.path.join(settings.BASE_DIR, 'schemas', 'movie_schema.xsd')
 
@@ -307,6 +307,7 @@ def watched_list_view(request):
             return error_xml_response(f"An error occurred: {str(e)}", status_code=500)
         
 
+#XSLT  / HTML VİEWS
 
 @api_view(['GET'])
 @permission_classes([AllowAny]) # Herkesin HTML sayfasını görmesine izin ver
@@ -338,3 +339,79 @@ def movie_detail_html_view(request, movie_id):
     except Exception as e:
         # Hata durumunda basit bir metin hatası döndür
         return HttpResponse(f"<h1>An error occurred during XSLT transformation.</h1><p>{e}</p>", status=500, content_type='text/html')
+    
+
+
+# YORUM 
+def comment_to_xml_etree(comment_obj):
+    """Comment nesnesini XML'e dönüştürür."""
+    root = etree.Element("comment", id=str(comment_obj.id))
+    etree.SubElement(root, "movieId").text = str(comment_obj.movie.movie_id)
+    
+    author_element = etree.SubElement(root, "author")
+    author_element.set("id", str(comment_obj.author.id))
+    author_element.text = comment_obj.author.username
+    
+    body_element = etree.SubElement(root, "body")
+    body_element.text = etree.CDATA(comment_obj.body) # Yorum metni için CDATA önemli
+    
+    etree.SubElement(root, "createdAt").text = comment_obj.created_at.isoformat()
+    return root
+
+
+# --- API Görünümleri ---
+
+@api_view(['GET', 'POST'])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated]) # POST için kimlik doğrulaması gerekecek
+def comment_list_create_view(request, movie_id):
+    """
+    GET: Belirli bir filme ait yorumları listeler. (Herkes erişebilir)
+    POST: Belirli bir filme yeni bir yorum ekler. (Sadece giriş yapmış kullanıcılar)
+    """
+    # Yorumların ait olacağı filmi bul
+    movie_obj = get_object_or_404(Movie, pk=movie_id)
+
+    if request.method == 'GET':
+        # @permission_classes'ı [AllowAny] yapmadığımız için GET de korumalı olacak.
+        # GET'in herkese açık olmasını istiyorsak, izin kontrolünü view içinde yapmalıyız.
+        # Şimdilik GET'in de korumalı kalması sorun değil.
+        
+        comments = movie_obj.comments.all().select_related('author') # Veritabanı sorgusunu optimize et
+        root = etree.Element("comments", movieId=movie_id, movieTitle=movie_obj.title)
+        
+        for comment in comments:
+            root.append(comment_to_xml_etree(comment))
+        
+        return xml_response(root)
+
+    elif request.method == 'POST':
+        # @permission_classes([IsAuthenticated]) sayesinde bu bloğa sadece
+        # giriş yapmış kullanıcılar erişebilir.
+        user = request.user
+        
+        if request.content_type != 'application/xml':
+            return error_xml_response("Content-Type must be application/xml", status_code=415)
+        
+        try:
+            xml_doc = etree.fromstring(request.body)
+            comment_body = xml_doc.findtext('body')
+
+            if not comment_body or not comment_body.strip():
+                return error_xml_response("Comment body cannot be empty.", status_code=400)
+
+            # Yeni yorumu oluştur
+            new_comment = Comment.objects.create(
+                movie=movie_obj,
+                author=user,
+                body=comment_body
+            )
+
+            # Başarılı yanıtı oluşturulan yorumun XML'i ile dön
+            return xml_response(comment_to_xml_etree(new_comment), status_code=201)
+
+        except etree.XMLSyntaxError:
+            return error_xml_response("Invalid XML syntax.", status_code=400)
+        except Exception as e:
+            return error_xml_response(f"An error occurred: {str(e)}", status_code=500)
+    
