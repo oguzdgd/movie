@@ -64,6 +64,33 @@ def movie_list_create_view(request):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def movie_list_html_view(request):
+    """
+    Tüm filmlerin listesini XSLT ile HTML'e dönüştürerek sunar.
+    """
+    try:
+        movies = Movie.objects.all()
+        
+        # 1. Tüm filmleri bir XML ağacına dönüştür
+        root = etree.Element("movies")
+        for movie_obj in movies:
+            movie_element = etree.Element("movie", id=str(movie_obj.movie_id))
+            etree.SubElement(movie_element, "title").text = movie_obj.title
+            root.append(movie_element)
+        
+
+        html_result = apply_xslt_transform(root, 'movies_list_to_html.xsl')
+        
+        return HttpResponse(html_result, content_type='text/html')
+
+    except Exception as e:
+        return HttpResponse(f"<h1>An error occurred.</h1><p>{e}</p>", status=500)
+
+
+
 @api_view(['GET', 'PUT', 'DELETE'])
 @authentication_classes([TokenAuthentication])
 @permission_classes([AllowAny]) # GET için herkese izin ver

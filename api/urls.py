@@ -23,7 +23,8 @@ urlpatterns = [
     #  URL'yi /users/{user_id}/watchedlist/ gibi yapmak yerine /watchedlist/ yapıyoruz çünkü kimin istek attığını zaten request.user'dan (token sayesinde) bileceğiz. Bu daha güvenli ve RESTful bir yaklaşımdır.
 
     # XSLT dönüşümü için HTML sayfası sunan URL
-    path('movies/<str:movie_id>/html/', views.movie_detail_html_view, name='movie-detail-html'),
+    path('html/movies/<str:movie_id>/', views.movie_detail_html_view, name='movie-detail-html'),
+    path('html/movies/', views.movie_list_html_view, name='movie-list-html'),
 
     # Bir filme ait yorumları listelemek ve yeni yorum eklemek için
     path('movies/<str:movie_id>/comments/', views.comment_list_create_view, name='comment-list-create'),
