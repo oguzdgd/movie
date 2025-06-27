@@ -143,5 +143,14 @@ REST_FRAMEWORK = {
     'DEFAULT_RENDERER_CLASSES': [
         'rest_framework_xml.renderers.XMLRenderer',
     ],
+
+
+    # Test istemcisinin XML formatını anlamasını sağlamak için
+    'TEST_REQUEST_DEFAULT_FORMAT': 'xml',
+    'TEST_REQUEST_RENDERER_CLASSES': [
+        'rest_framework_xml.renderers.XMLRenderer',
+        'rest_framework.renderers.MultiPartRenderer',
+        'rest_framework.renderers.JSONRenderer'
+    ]
     
 }
