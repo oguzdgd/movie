@@ -35,13 +35,19 @@ schema_view = get_schema_view(
 )
 
 urlpatterns = [
+
+    # 1. Path for the Django Admin interface
     path('admin/', admin.site.urls),
+
+    # 2. Path for all Version 1 API endpoints
+    # All requests starting with /api/v1/ will be handled by the 'api.urls' file.
     path('api/v1/', include('api.urls')),
 
+   # 3. Paths for the interactive API documentation (Swagger and ReDoc)
     path('swagger/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
     path('redoc/', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),
     
-    # API şemasını JSON veya YAML olarak indirmek için (isteğe bağlı)
+    # API şemasını JSON veya YAML olarak indirmek için
     path('swagger.json', schema_view.without_ui(cache_timeout=0), name='schema-json'),
     path('swagger.yaml', schema_view.without_ui(cache_timeout=0), name='schema-yaml'),
 ]
